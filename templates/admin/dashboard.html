@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Admin{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Admin dashboard</h1>
+  {% include "admin/_tabs.html" %}
+</div>
+
+<div class="stat-cards">
+  <div class="stat-card"><span class="stat-num">{{ total_members }}</span><span class="stat-label">Members</span></div>
+  <div class="stat-card accent-green"><span class="stat-num">{{ present_today }}</span><span class="stat-label">Present today</span></div>
+  <div class="stat-card accent-blue"><span class="stat-num">{{ on_leave_today }}</span><span class="stat-label">On leave today</span></div>
+  <div class="stat-card accent-amber"><span class="stat-num">{{ pending }}</span><span class="stat-label">Pending leaves</span></div>
+</div>
+
+<div class="grid grid-2">
+  <section class="card">
+    <h2 class="card-title">Pending leave requests</h2>
+    {% if recent_leaves %}
+      {% for l in recent_leaves %}
+      <div class="leave-item">
+        <div class="leave-main">
+          <span class="leave-type">{{ l.user.name }} · {{ l.leave_type|capitalize }}</span>
+          <span class="leave-dates">{{ l.start_date.strftime('%d %b') }} – {{ l.end_date.strftime('%d %b') }} · {{ l.days }}d</span>
+          {% if l.reason %}<span class="leave-reason muted">{{ l.reason }}</span>{% endif %}
+        </div>
+        <div class="leave-side btn-row">
+          <form method="post" action="{{ url_for('admin_review_leave', leave_id=l.id, decision='approve') }}">
+            <button class="btn btn-sm btn-primary">Approve</button>
+          </form>
+          <form method="post" action="{{ url_for('admin_review_leave', leave_id=l.id, decision='reject') }}">
+            <button class="btn btn-sm btn-danger">Reject</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+      <a href="{{ url_for('admin_leaves') }}" class="muted" style="display:inline-block;margin-top:.6rem">View all →</a>
+    {% else %}
+      <p class="muted empty">No pending requests. 🎉</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Checked in today</h2>
+    {% if todays %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Member</th><th>In</th><th>Out</th></tr></thead>
+        <tbody>
+        {% for r in todays %}
+          <tr>
+            <td>{{ r.user.name }}</td>
+            <td>{{ r.check_in.strftime('%H:%M') if r.check_in else ('Leave' if r.status=='on_leave' else '—') }}</td>
+            <td>{{ r.check_out.strftime('%H:%M') if r.check_out else '—' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="muted empty">Nobody has checked in yet today.</p>
+    {% endif %}
+  </section>
+</div>
+
+{% endblock %}

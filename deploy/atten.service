@@ -1,0 +1,38 @@
+# Example systemd unit. Adjust User/Group, paths, TZ and the gunicorn path,
+# then: sudo cp deploy/atten.service /etc/systemd/system/
+#       sudo systemctl daemon-reload && sudo systemctl enable --now atten
+[Unit]
+Description=Atten - location-aware attendance
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=atten
+Group=atten
+WorkingDirectory=/opt/atten
+EnvironmentFile=/opt/atten/.env
+
+# The check-in/check-out cutoffs are compared against local wall-clock time,
+# so the service timezone must match the lab's.
+Environment=TZ=UTC
+Environment=PYTHONUNBUFFERED=1
+
+# One worker on purpose: the datastore is SQLite and app.py runs migrations and
+# seeding at import time. Concurrency comes from threads instead.
+ExecStart=/opt/atten/.venv/bin/gunicorn \
+    --workers 1 --threads 8 --worker-class gthread \
+    --bind 127.0.0.1:5001 \
+    --access-logfile - --error-logfile - \
+    app:app
+
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=always
+RestartSec=3
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

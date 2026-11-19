@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}DB editor{% endblock %}
+{% block content %}
+<style>
+  .db-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
+  .db-head form { margin:0; }
+  .db-warn { font-size:.85rem; }
+  .db-cell { max-width:22rem; overflow:hidden; text-overflow:ellipsis; }
+  .db-null { color:var(--muted); font-style:italic; font-size:.8rem; }
+  .db-sort { color:inherit; text-decoration:none; }
+  .db-sort:hover { color:var(--indigo); }
+  .db-pager { display:flex; gap:.5rem; align-items:center; justify-content:flex-end; margin-top:.8rem; flex-wrap:wrap; }
+  .db-field { display:grid; grid-template-columns:12rem 1fr; gap:.4rem 1rem; align-items:start; padding:.55rem 0; border-bottom:1px solid var(--border); }
+  .db-field:last-of-type { border-bottom:none; }
+  .db-field > label { font-weight:650; font-size:.88rem; padding-top:.45rem; word-break:break-word; }
+  .db-field small { display:block; font-weight:400; color:var(--muted); font-size:.74rem; }
+  .db-field input:not([type=checkbox]), .db-field select, .db-field textarea { width:100%; margin:0; }
+  .db-field textarea { min-height:5rem; font-family:inherit; }
+  .db-nullbox { display:inline-flex; align-items:center; gap:.3rem; font-size:.78rem; color:var(--muted); margin-top:.3rem; }
+  .db-nullbox input { width:auto; margin:0; }
+  @media (max-width:560px){ .db-field { grid-template-columns:1fr; } .db-field > label { padding-top:0; } }
+</style>
+
+<div class="page-head db-head">
+  <h1>DB editor</h1>
+  <form method="post" action="{{ url_for('dbmod_logout') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <span class="muted">Signed in as <b>{{ dbmod_admin.lab_id }}</b></span>
+    <button class="btn btn-outline btn-sm">Sign out</button>
+  </form>
+</div>
+
+{% if tables is defined and table is defined %}
+<div class="admin-tabs">
+  <a href="{{ url_for('dbmod') }}" class="tab">All tables</a>
+  {% for t in tables %}
+    <a href="{{ url_for('dbmod_table', table=t) }}" class="tab {{ 'active' if t == table }}">{{ t }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% block dbmod %}{% endblock %}
+{% endblock %}

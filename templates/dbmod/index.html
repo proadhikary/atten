@@ -1,0 +1,23 @@
+{% extends "dbmod/_layout.html" %}
+{% block dbmod %}
+<p class="flash flash-warning db-warn">Edits here write straight to the database and skip every app rule
+  (leave statuses, voiding, quota checks). Use it to repair data, not for day-to-day admin work.</p>
+
+<section class="card">
+  <h2 class="card-title">Tables</h2>
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Table</th><th>Rows</th><th></th></tr></thead>
+      <tbody>
+      {% for name, count in tables %}
+        <tr>
+          <td><a href="{{ url_for('dbmod_table', table=name) }}"><b>{{ name }}</b></a></td>
+          <td>{{ count }}</td>
+          <td><a class="btn btn-outline btn-sm" href="{{ url_for('dbmod_new', table=name) }}">+ New row</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,350 @@
+{% extends "base.html" %}
+{% block title %}Admin · Settings{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Settings</h1>
+  {% include "admin/_tabs.html" %}
+</div>
+
+<div class="grid grid-2">
+  <section class="card">
+    <h2 class="card-title">Lab location</h2>
+    <p class="muted" style="margin-top:-.4rem">Attendance can only be marked within this radius of the lab. Stand in the lab and tap <b>Use my current location</b> for best accuracy.</p>
+    <form method="post" id="geoForm">
+      <input type="hidden" name="section" value="geofence">
+      <label>Lab name
+        <input type="text" name="lab_name" value="{{ lab_name }}">
+      </label>
+      <div class="field-grid">
+        <label>Latitude
+          <input type="number" step="any" name="lab_lat" id="lat" value="{{ lab_lat }}" required>
+        </label>
+        <label>Longitude
+          <input type="number" step="any" name="lab_lng" id="lng" value="{{ lab_lng }}" required>
+        </label>
+      </div>
+      <label>Radius (meters)
+        <input type="number" step="1" min="10" name="lab_radius" id="radius" value="{{ lab_radius|int }}" required>
+      </label>
+      <label>Location check
+        <select name="geofence_mode">
+          <option value="enforce" {{ 'selected' if geofence_mode=='enforce' }}>Enforce — must be inside the radius</option>
+          <option value="warn" {{ 'selected' if geofence_mode=='warn' }}>Warn — allow from anywhere, but raise a flag</option>
+          <option value="off" {{ 'selected' if geofence_mode=='off' }}>Off — don't check location at all</option>
+        </select>
+      </label>
+      <p class="muted" style="font-size:.8rem;margin:-.5rem 0 .8rem">
+        Turn this <b>Off</b> when GPS can't be relied on — a browser only hands out a position
+        over HTTPS, so on a plain-http address the check can never pass. While it's off the
+        browser isn't even asked for a location, and anyone can mark attendance from anywhere.
+      </p>
+      <div class="btn-row" style="margin-top:1rem">
+        <button type="button" class="btn btn-outline" id="useLoc">📍 Use my current location</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+      <p id="locMsg" class="geo-msg"></p>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Current geofence</h2>
+    <div class="geo-preview">
+      <div class="geo-ring"><span>{{ lab_radius|int }} m</span></div>
+    </div>
+    <ul class="kv">
+      <li><span>Latitude</span><b id="pvLat">{{ lab_lat }}</b></li>
+      <li><span>Longitude</span><b id="pvLng">{{ lab_lng }}</b></li>
+      <li><span>Radius</span><b id="pvRad">{{ lab_radius|int }} m</b></li>
+    </ul>
+    <a class="btn btn-outline btn-block" target="_blank"
+       href="https://www.openstreetmap.org/?mlat={{ lab_lat }}&mlon={{ lab_lng }}#map=18/{{ lab_lat }}/{{ lab_lng }}">
+      View on map ↗
+    </a>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Leave policy</h2>
+    <p class="muted" style="margin-top:-.4rem">Members earn this many days every month and unused days carry forward within the cycle. Requests beyond the balance are still allowed — they just arrive flagged.</p>
+    <form method="post">
+      <input type="hidden" name="section" value="policy">
+      <div class="field-grid">
+        <label>Days earned per month
+          <input type="number" step="0.5" min="0" max="31" name="leave_rate" value="{{ leave_rate|days }}" required>
+        </label>
+        <label>Accrual starts
+          <input type="date" name="accrual_start" value="{{ accrual_start.isoformat() }}" required>
+        </label>
+        <label>Menstrual days per month
+          <input type="number" step="0.5" min="0" max="31" name="menstrual_rate"
+                 value="{{ menstrual_leave_rate|days }}" required>
+        </label>
+      </div>
+      <p class="muted" style="margin-top:-.2rem;font-size:.82rem">
+        Menstrual days are an extra grant for members marked female, on top of the rate
+        above, and can only be spent on a leave request of type <b>Menstrual</b> — so those
+        members see <b>{{ (leave_rate + menstrual_leave_rate)|days }} day(s)</b> a month.
+        Unlike the general rate they do <b>not</b> carry forward: each calendar month grants
+        {{ menstrual_leave_rate|days }} day(s) and whatever is unused lapses.
+      </p>
+      <p class="policy-note">
+        Current cycle: <b>{{ cycle_start.strftime('%d %b %Y') }} – {{ cycle_end.strftime('%d %b %Y') }}</b>
+        · total allowance <b>{{ cycle_total|days }} days</b>.
+        Later cycles run January–December.
+      </p>
+
+      <h3 class="sub-title">Attendance window</h3>
+      <p class="muted" style="margin-top:-.4rem">Check-in closes in the evening so a day can't be back-filled; check-out stays open longer for people working late.</p>
+      <div class="field-grid">
+        <label>Check-in closes at
+          <input type="time" name="checkin_cutoff" value="{{ window.checkin_cutoff.strftime('%H:%M') }}" required>
+        </label>
+        <label>Check-out closes at
+          <input type="time" name="checkout_cutoff" value="{{ window.checkout_cutoff.strftime('%H:%M') }}" required>
+        </label>
+      </div>
+
+      <div class="btn-row" style="margin-top:1rem">
+        <button type="submit" class="btn btn-primary">Save rules</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Device binding</h2>
+    <p class="muted" style="margin-top:-.4rem">Each account can mark attendance from at most <b>{{ device_limit }} devices</b>. Using someone else's device voids that day and raises a flag.</p>
+    <ul class="kv">
+      <li><span>Devices per account</span><b>{{ device_limit }}</b></li>
+      <li><span>Open flags</span><b>{{ open_flags }}</b></li>
+    </ul>
+    <a class="btn btn-outline btn-block" href="{{ url_for('admin_security') }}">Review devices &amp; flags</a>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Lab network</h2>
+    <p class="muted" style="margin-top:-.4rem">GPS is self-reported and can be faked from a phone in seconds. The network a request arrives on cannot be, so requiring the lab Wi-Fi is the strongest check available to a website.</p>
+    <form method="post">
+      <input type="hidden" name="section" value="network">
+      <label>Allowed networks
+        <textarea name="lab_networks" id="labNets" rows="3"
+                  placeholder="10.20.0.0/16&#10;103.27.9.14">{{ lab_networks_raw }}</textarea>
+      </label>
+      <p class="muted" style="font-size:.8rem;margin:-.5rem 0 .8rem">
+        One IP or CIDR range per line. Your connection right now is
+        <b id="myIp">{{ my_ip }}</b> —
+        <button type="button" class="link-btn" id="addMyIp">add it</button>.
+        {% if not trust_proxy %}<br>Behind a reverse proxy? Start the app with <code>TRUST_PROXY=1</code>, or every member will look like the proxy.{% endif %}
+      </p>
+
+      <label>When a request comes from elsewhere
+        <select name="network_mode">
+          <option value="off" {{ 'selected' if network_mode=='off' }}>Off — don't check the network</option>
+          <option value="warn" {{ 'selected' if network_mode=='warn' }}>Warn — allow it, but raise a flag</option>
+          <option value="enforce" {{ 'selected' if network_mode=='enforce' }}>Enforce — block it</option>
+        </select>
+      </label>
+      <p class="muted" style="font-size:.8rem;margin:-.5rem 0 .8rem">
+        Start on <b>Warn</b> for a few days and watch the Security tab — that shows you who
+        would have been blocked before you actually block anyone.
+      </p>
+
+      <div class="btn-row"><button type="submit" class="btn btn-primary">Save</button></div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Discord notifications</h2>
+    <p class="muted" style="margin-top:-.4rem">Post a message to a Discord channel every time someone checks in or out. Create the webhook in Discord under <b>Channel → Edit Channel → Integrations → Webhooks</b>.</p>
+    <form method="post">
+      <input type="hidden" name="section" value="discord">
+      <label>Webhook URL
+        <input type="url" name="discord_webhook" value="{{ discord_url }}"
+               placeholder="https://discord.com/api/webhooks/…">
+      </label>
+      <p class="muted" style="font-size:.8rem;margin:-.4rem 0 .8rem">
+        Treat this like a password — anyone holding it can post to your channel. Leave blank to turn notifications off.
+      </p>
+      <label class="check-row">
+        <input type="checkbox" name="discord_attendance" {{ 'checked' if discord_attendance }}>
+        <span>Check-in and check-out messages</span>
+      </label>
+      <label class="check-row">
+        <input type="checkbox" name="discord_flags" {{ 'checked' if discord_flags }}>
+        <span>Security alerts (proxy attempts, device limit)</span>
+      </label>
+
+      <div class="btn-row" style="margin-top:1rem">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="submit" name="test" value="1" class="btn btn-outline">Save &amp; send test</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Email notifications</h2>
+    <p class="muted" style="margin-top:-.4rem">Mail the admins when a member raises a leave request, and mail the member when you approve or reject it — nobody has to be watching Discord for leave to move. Needs an SMTP account (your lab's mail server, or a Gmail app password).</p>
+    <form method="post">
+      <input type="hidden" name="section" value="email">
+
+      <div class="field-grid">
+        <label>SMTP host
+          <input type="text" name="smtp_host" value="{{ smtp_host }}"
+                 placeholder="smtp.gmail.com">
+        </label>
+        <label>Port
+          <input type="number" name="smtp_port" value="{{ smtp_port }}" min="1" max="65535">
+        </label>
+      </div>
+
+      <label>Encryption
+        <select name="smtp_security">
+          <option value="starttls" {{ 'selected' if smtp_security=='starttls' }}>STARTTLS — port 587 (most common)</option>
+          <option value="ssl" {{ 'selected' if smtp_security=='ssl' }}>SSL/TLS — port 465</option>
+          <option value="none" {{ 'selected' if smtp_security=='none' }}>None — unencrypted, local relay only</option>
+        </select>
+      </label>
+
+      <div class="field-grid">
+        <label>Username
+          <input type="text" name="smtp_username" value="{{ smtp_username }}"
+                 autocomplete="off" placeholder="attendance@example.edu">
+        </label>
+        <label>Password
+          <input type="password" name="smtp_password" autocomplete="new-password"
+                 placeholder="{{ '•••••••• (unchanged)' if smtp_has_password else 'app password' }}">
+        </label>
+      </div>
+      {% if smtp_has_password %}
+      <label class="check-row">
+        <input type="checkbox" name="clear_password">
+        <span>Clear the stored password</span>
+      </label>
+      {% endif %}
+      <p class="muted" style="font-size:.8rem;margin:-.2rem 0 .8rem">
+        Leave the password blank to keep the one already saved. With Gmail or Google Workspace use an
+        <b>app password</b>, not the account password.
+      </p>
+
+      <div class="field-grid">
+        <label>From address
+          <input type="email" name="smtp_from" value="{{ smtp_from }}"
+                 placeholder="attendance@example.edu">
+        </label>
+        <label>From name
+          <input type="text" name="smtp_from_name" value="{{ smtp_from_name }}"
+                 placeholder="Atten">
+        </label>
+      </div>
+
+      <label>Send leave requests to
+        <textarea name="email_admin_recipients" rows="2"
+                  placeholder="pi@example.edu, coordinator@example.edu">{{ email_admin_recipients }}</textarea>
+      </label>
+      <p class="muted" style="font-size:.8rem;margin:-.5rem 0 .8rem">
+        Leave blank to use every admin's profile email
+        {%- if email_admin_fallback %} — currently {{ email_admin_fallback|join(', ') }}
+        {%- else %} — <b>no admin has an email on file yet</b>, so nothing would be sent
+        {%- endif %}.
+      </p>
+
+      <label class="check-row">
+        <input type="checkbox" name="email_leave_request" {{ 'checked' if email_leave_request }}>
+        <span>New and withdrawn leave requests → admins</span>
+      </label>
+      <label class="check-row">
+        <input type="checkbox" name="email_leave_decision" {{ 'checked' if email_leave_decision }}>
+        <span>Approved and rejected decisions → the member</span>
+      </label>
+      <p class="muted" style="font-size:.8rem;margin:.4rem 0 0">
+        A member only gets mail if they've filled in an email on their profile. Delivery is
+        best-effort — a mail server that's down never blocks or fails a leave request.
+      </p>
+
+      <h3 class="sub-title">Copy to Sent</h3>
+      <p class="muted" style="margin-top:-.4rem">Sending over SMTP delivers the mail but files nothing, so the account's own <b>Sent</b> folder stays empty. Turn this on to save a copy there over IMAP, the way a mail client does.</p>
+      <label class="check-row">
+        <input type="checkbox" name="email_save_sent" {{ 'checked' if email_save_sent }}>
+        <span>Keep a copy in the Sent folder</span>
+      </label>
+
+      <div class="field-grid">
+        <label>IMAP host
+          <input type="text" name="imap_host" value="{{ imap_host }}"
+                 placeholder="{{ imap_host_derived or 'imap.gmail.com' }}">
+        </label>
+        <label>Port
+          <input type="number" name="imap_port" value="{{ imap_port }}" min="1" max="65535">
+        </label>
+      </div>
+      <label>Encryption
+        <select name="imap_security">
+          <option value="ssl" {{ 'selected' if imap_security=='ssl' }}>SSL/TLS — port 993 (most common)</option>
+          <option value="starttls" {{ 'selected' if imap_security=='starttls' }}>STARTTLS — port 143</option>
+          <option value="none" {{ 'selected' if imap_security=='none' }}>None — unencrypted, local server only</option>
+        </select>
+      </label>
+
+      <div class="field-grid">
+        <label>IMAP username
+          <input type="text" name="imap_username" value="{{ imap_username }}"
+                 autocomplete="off" placeholder="same as SMTP">
+        </label>
+        <label>IMAP password
+          <input type="password" name="imap_password" autocomplete="new-password"
+                 placeholder="{{ '•••••••• (unchanged)' if imap_has_password else 'same as SMTP' }}">
+        </label>
+      </div>
+      {% if imap_has_password %}
+      <label class="check-row">
+        <input type="checkbox" name="clear_imap_password">
+        <span>Clear the stored IMAP password</span>
+      </label>
+      {% endif %}
+
+      <label>Sent folder
+        <input type="text" name="sent_folder" value="{{ sent_folder }}"
+               placeholder="ask the server (Sent · Sent Items · [Gmail]/Sent Mail)">
+      </label>
+      <p class="muted" style="font-size:.8rem;margin:-.5rem 0 0">
+        Leave every field blank to reuse the SMTP account
+        {%- if imap_host_derived %} — host <b>{{ imap_host_derived }}</b>{% endif %} — and let the
+        server name its own Sent folder. Filing is best-effort too: if the copy fails the mail is
+        still delivered, and the failure is logged.
+      </p>
+
+      <div class="btn-row" style="margin-top:1rem">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="submit" name="test" value="1" class="btn btn-outline">Save &amp; send test</button>
+      </div>
+    </form>
+  </section>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('addMyIp').addEventListener('click', function () {
+  const box = document.getElementById('labNets');
+  const ip = document.getElementById('myIp').textContent.trim();
+  const lines = box.value.split(/\s+/).filter(Boolean);
+  if (lines.includes(ip)) return;
+  lines.push(ip);
+  box.value = lines.join('\n');
+});
+
+document.getElementById('useLoc').addEventListener('click', function () {
+  const msg = document.getElementById('locMsg');
+  if (!navigator.geolocation) { msg.textContent = 'Geolocation not supported.'; return; }
+  msg.textContent = 'Getting location…';
+  navigator.geolocation.getCurrentPosition(function (pos) {
+    document.getElementById('lat').value = pos.coords.latitude.toFixed(6);
+    document.getElementById('lng').value = pos.coords.longitude.toFixed(6);
+    msg.textContent = 'Location captured (±' + Math.round(pos.coords.accuracy) + ' m accuracy). Review and Save.';
+    msg.className = 'geo-msg ok';
+  }, function (err) {
+    msg.textContent = 'Could not get location: ' + err.message;
+    msg.className = 'geo-msg err';
+  }, { enableHighAccuracy: true, timeout: 10000 });
+});
+</script>
+{% endblock %}

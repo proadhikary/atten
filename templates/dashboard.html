@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>Hi, {{ current_user.name.split()[0] }} 👋</h1>
+    <p class="muted">{{ today.strftime('%A, %d %B %Y') }} · {{ current_user.lab_id }}</p>
+  </div>
+</div>
+
+<div class="grid grid-2">
+  <!-- Attendance card -->
+  <section class="card attendance-card">
+    <h2 class="card-title">Mark attendance</h2>
+
+    {% if on_leave %}
+      <div class="flash flash-info" style="margin:0 0 1rem">You are on approved leave today.</div>
+    {% endif %}
+
+    <div class="status-row">
+      <div class="status-box {{ 'done' if att and att.check_in }}">
+        <span class="status-label">Check-in</span>
+        <span class="status-time" id="checkinTime">{{ att.check_in.strftime('%H:%M') if att and att.check_in else '—' }}</span>
+      </div>
+      <div class="status-box {{ 'done' if att and att.check_out }}">
+        <span class="status-label">Check-out</span>
+        <span class="status-time" id="checkoutTime">{{ att.check_out.strftime('%H:%M') if att and att.check_out else '—' }}</span>
+      </div>
+    </div>
+
+    <div id="geoMsg" class="geo-msg"></div>
+
+    {% set has_left = current_user.has_left() %}
+    {% if has_left %}
+      <div class="flash flash-info" style="margin:0 0 1rem">
+        You left the lab on {{ current_user.left_on.strftime('%d %b %Y') }}, so attendance is closed.
+        Your history below stays available.
+      </div>
+    {% elif current_user.left_on %}
+      <div class="flash flash-info" style="margin:0 0 1rem">
+        Your last day in the lab is {{ current_user.left_on.strftime('%d %b %Y') }}.
+      </div>
+    {% endif %}
+
+    {% if not has_left and not window.can_check_in and not (att and att.check_in) %}
+      <div class="flash flash-warning" style="margin:0 0 1rem">
+        Check-in closed at {{ window.checkin_cutoff.strftime('%H:%M') }}. Ask the admin if you were in the lab today.
+      </div>
+    {% endif %}
+
+    <div class="attendance-actions">
+      <button id="btnCheckIn" class="btn btn-primary btn-lg"
+              {{ 'disabled' if (att and att.check_in) or not window.can_check_in or has_left }}>
+        📍 Check in
+      </button>
+      <button id="btnCheckOut" class="btn btn-outline btn-lg"
+              {{ 'disabled' if not (att and att.check_in) or (att and att.check_out) or not window.can_check_out }}>
+        Check out
+      </button>
+    </div>
+    <p class="muted geo-hint">
+      {% if geofence_mode == 'off' %}Location checking is off right now — the admin turned it off.
+      {% elif geofence_mode == 'warn' %}You should be within <b>{{ lab_radius|int }} m</b> of the lab; marking from further away is allowed but flagged.
+      {% else %}You must be within <b>{{ lab_radius|int }} m</b> of the lab. Location is checked when you tap the button.{% endif %}
+      Check in by <b>{{ window.checkin_cutoff.strftime('%H:%M') }}</b> · check out by <b>{{ window.checkout_cutoff.strftime('%H:%M') }}</b>.
+    </p>
+  </section>
+
+  <!-- Stats -->
+  <section class="card">
+    <h2 class="card-title">This month</h2>
+    <div class="stat-grid">
+      <div class="stat">
+        <span class="stat-num">{{ present_days }}</span>
+        <span class="stat-label">Days present</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">{{ pending_leave_count }}</span>
+        <span class="stat-label">Pending leaves</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num {{ 'over' if quota.balance < 0 }}">{{ quota.balance|days }}</span>
+        <span class="stat-label">Leave days left</span>
+      </div>
+    </div>
+    <p class="muted" style="font-size:.8rem">
+      {{ quota.rate|days }} day(s) earned per month, carried forward ·
+      {{ quota.used|days }} of {{ quota.earned|days }} used this cycle.
+      {%- if quota.has_menstrual %}<br>
+      {{ quota.general.balance|days }} general day(s) left, plus
+      {{ quota.menstrual.balance|days }} of {{ quota.menstrual.rate|days }} menstrual day(s)
+      for {{ quota.menstrual.month.strftime('%B') }} — those reset every month and don't carry over.
+      {%- endif %}
+    </p>
+    <a href="{{ url_for('leaves') }}" class="btn btn-outline btn-block" style="margin-top:1rem">Request leave</a>
+  </section>
+</div>
+
+<!-- Recent -->
+<section class="card">
+  <h2 class="card-title">Recent attendance</h2>
+  {% if recent %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Date</th><th>In</th><th>Out</th><th>Hours</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for r in recent %}
+        <tr>
+          <td>{{ r.day.strftime('%a, %d %b') }}</td>
+          <td>{{ r.check_in.strftime('%H:%M') if r.check_in else '—' }}</td>
+          <td>{{ r.check_out.strftime('%H:%M') if r.check_out else '—' }}</td>
+          <td>{{ r.worked_hours if r.worked_hours is not none else '—' }}</td>
+          <td>
+            {% if r.status == 'on_leave' %}<span class="pill pill-info">On leave</span>
+            {% elif r.status == 'half_leave' %}<span class="pill pill-info">Half day</span>
+            {% elif r.check_in %}<span class="pill pill-success">Present</span>
+            {% else %}<span class="pill">—</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="muted empty">No attendance records yet. Check in to get started.</p>
+  {% endif %}
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.LAB = {
+    radius: {{ lab_radius }},
+    geofence: "{{ geofence_mode }}",          // off → don't even ask for a position
+    api: "{{ url_for('api_attendance') }}"
+  };
+</script>
+<script src="{{ url_for('static', filename='js/attendance.js') }}"></script>
+{% endblock %}

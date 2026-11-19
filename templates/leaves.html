@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}Leaves{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>Leave requests</h1></div>
+
+<section class="card quota-card">
+  <div class="quota-head">
+    <h2 class="card-title" style="margin:0">Your leave quota</h2>
+    <span class="muted">{{ quota.cycle_start.strftime('%d %b %Y') }} – {{ quota.cycle_end.strftime('%d %b %Y') }}
+      {%- if quota.accrues_from > quota.cycle_start %} · earning from {{ quota.accrues_from.strftime('%b %Y') }} (joined){% endif %}</span>
+  </div>
+  <div class="quota-bar" role="img"
+       aria-label="{{ quota.used|days }} of {{ quota.earned|days }} earned days used">
+    {% set span = [quota.earned, quota.used] | max or 1 %}
+    <span class="quota-fill {{ 'over' if quota.balance < 0 }}"
+          style="width:{{ (quota.used / span * 100)|round(1) }}%"></span>
+  </div>
+  <div class="stat-grid quota-stats">
+    <div class="stat"><span class="stat-num">{{ quota.earned|days }}</span><span class="stat-label">Earned ({{ quota.months }} months)</span></div>
+    <div class="stat"><span class="stat-num">{{ quota.used|days }}</span><span class="stat-label">Used</span></div>
+    <div class="stat"><span class="stat-num {{ 'over' if quota.balance < 0 }}">{{ quota.balance|days }}</span><span class="stat-label">Remaining</span></div>
+  </div>
+  {% if quota.has_menstrual %}
+  <div class="stat-grid quota-stats">
+    <div class="stat"><span class="stat-num">{{ quota.general.balance|days }}</span><span class="stat-label">General leave left</span></div>
+    <div class="stat"><span class="stat-num">{{ quota.menstrual.balance|days }}</span><span class="stat-label">Menstrual leave · {{ quota.menstrual.month.strftime('%b') }}</span></div>
+  </div>
+  {% endif %}
+  <p class="muted quota-note">
+    You earn <b>{{ quota.rate|days }} day(s) every month</b> and unused days roll over
+    within the cycle.
+    {%- if quota.has_menstrual %} That includes <b>{{ quota.menstrual.rate|days }} day(s) of
+    menstrual leave a month</b>, which works differently: it can only be used for a
+    request of that type, it does <b>not</b> carry over — each month starts with
+    {{ quota.menstrual.rate|days }} again and an unused day lapses — and a menstrual
+    request longer than the month's grant falls back on your general balance.
+    General leave never draws on it.{% endif %}
+    Going over is allowed — the request is simply marked for the
+    admin, who can still approve it.
+  </p>
+</section>
+
+<div class="grid grid-2">
+  <section class="card">
+    <h2 class="card-title">New request</h2>
+    <form method="post" id="leaveForm" data-balance="{{ quota.general.balance }}"
+          data-menstrual-balance="{{ quota.balance }}">
+      <label>Type
+        <select name="leave_type" id="leaveType">
+          <option value="casual">Casual</option>
+          <option value="sick">Sick</option>
+          {% if quota.has_menstrual %}<option value="menstrual">Menstrual</option>{% endif %}
+          <option value="vacation">Vacation</option>
+          <option value="duty">On duty / official</option>
+          <option value="other">Other</option>
+        </select>
+      </label>
+      <label class="check-row">
+        <input type="checkbox" name="is_half_day" id="halfDay">
+        <span>Apply for a half day <span class="muted">— counts as 0.5 days</span></span>
+      </label>
+
+      <div class="field-grid" id="dateFields">
+        <label><span id="fromLabel">From</span>
+          <input type="date" name="start_date" id="startDate" required>
+        </label>
+        <label id="toField">To
+          <input type="date" name="end_date" id="endDate" required>
+        </label>
+      </div>
+      <p id="quotaHint" class="quota-hint"></p>
+      <label>Reason
+        <textarea name="reason" rows="3" placeholder="Brief reason for leave"></textarea>
+      </label>
+      <button type="submit" class="btn btn-primary btn-block">Submit request</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">My requests</h2>
+    {% if leaves %}
+    <div class="leave-list">
+      {% for l in leaves %}
+      <div class="leave-item">
+        <div class="leave-main">
+          <span class="leave-type">{{ l.leave_type|capitalize }}{% if l.is_half_day %} <span class="pill pill-info">Half day</span>{% endif %}</span>
+          <span class="leave-dates">
+            {% if l.is_half_day %}{{ l.start_date.strftime('%d %b %Y') }} · 0.5d
+            {% else %}{{ l.start_date.strftime('%d %b') }} – {{ l.end_date.strftime('%d %b %Y') }} · {{ l.days }}d{% endif %}
+          </span>
+          {% if l.reason %}<span class="leave-reason muted">{{ l.reason }}</span>{% endif %}
+          {% if l.admin_comment %}<span class="leave-reason muted">↳ {{ l.admin_comment }}</span>{% endif %}
+        </div>
+        <div class="leave-side">
+          <span class="pill pill-{{ 'success' if l.status=='approved' else 'danger' if l.status=='rejected' else 'warn' }}">{{ l.status|capitalize }}</span>
+          {% if l.status == 'pending' %}
+          <form method="post" action="{{ url_for('cancel_leave', leave_id=l.id) }}" onsubmit="return confirm('Withdraw this request?')">
+            <button class="link-btn">Withdraw</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+      <p class="muted empty">No leave requests yet.</p>
+    {% endif %}
+  </section>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* Show the quota impact while the dates are being picked, so nobody is
+   surprised by the warning only after submitting. */
+(function () {
+  var form = document.getElementById('leaveForm');
+  if (!form) return;
+  /* Two balances: menstrual leave can also spill into the general bucket, so it
+     is checked against the combined number — every other type against the
+     general one alone. */
+  var generalBalance = parseFloat(form.dataset.balance || '0');
+  var menstrualBalance = parseFloat(form.dataset.menstrualBalance || form.dataset.balance || '0');
+  var type = document.getElementById('leaveType');
+  var start = document.getElementById('startDate');
+  var end = document.getElementById('endDate');
+  var hint = document.getElementById('quotaHint');
+  var half = document.getElementById('halfDay');
+  var toField = document.getElementById('toField');
+  var fromLabel = document.getElementById('fromLabel');
+
+  function fmt(n) { return String(Math.round(n * 100) / 100); }
+
+  /* A half day is always a single date, so the "To" field would only confuse. */
+  function syncHalf() {
+    toField.hidden = half.checked;
+    end.required = !half.checked;
+    fromLabel.textContent = half.checked ? 'Date' : 'From';
+    if (half.checked) end.value = start.value;
+    update();
+  }
+
+  function update() {
+    var balance = (type && type.value === 'menstrual') ? menstrualBalance : generalBalance;
+    var a = start.value ? new Date(start.value) : null;
+    var b = half.checked ? a : (end.value ? new Date(end.value) : null);
+    if (!a || !b || b < a) { hint.textContent = ''; hint.className = 'quota-hint'; return; }
+    var days = half.checked ? 0.5 : Math.round((b - a) / 86400000) + 1;
+    var after = Math.round((balance - days) * 100) / 100;
+    var label = half.checked ? 'Half day (0.5 days)' : fmt(days) + ' day(s) requested';
+    if (after < 0) {
+      hint.textContent = '⚠ ' + label + ' — that is ' + fmt(-after) +
+                         ' day(s) over your quota. You can still submit; the admin decides.';
+      hint.className = 'quota-hint warn';
+    } else {
+      hint.textContent = label + ' · ' + fmt(after) + ' day(s) would remain.';
+      hint.className = 'quota-hint ok';
+    }
+  }
+
+  start.addEventListener('change', function () {
+    if (half.checked) end.value = start.value;
+    update();
+  });
+  end.addEventListener('change', update);
+  half.addEventListener('change', syncHalf);
+  if (type) type.addEventListener('change', update);
+  syncHalf();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Admin · Security{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Security</h1>
+  {% include "admin/_tabs.html" %}
+</div>
+
+<section class="card explain-card">
+  <h2 class="card-title">How proxy attendance is caught</h2>
+  <p class="muted">
+    Web browsers cannot read a device's MAC address — no website can. Instead, each
+    account is bound to at most <b>{{ device_limit }} devices</b>: the first check-in
+    registers the browser, and a third one is refused. If an account marks attendance
+    from a device already registered to someone else, the attempt is blocked, that
+    day's attendance is <b>voided</b>, and a flag is raised here for you to review.
+  </p>
+</section>
+
+<div class="filter-row">
+  {% for key, lbl in [('open','Open flags'),('resolved','Resolved'),('all','All')] %}
+    <a href="{{ url_for('admin_security', show=key) }}" class="chip {{ 'active' if show==key }}">{{ lbl }}</a>
+  {% endfor %}
+</div>
+
+<section class="card">
+  <h2 class="card-title">Flags</h2>
+  {% if flags %}
+  <div class="flag-list">
+    {% for f in flags %}
+    <div class="flag-item {{ 'resolved' if f.resolved }}">
+      <div class="flag-body">
+        <span class="flag-kind">
+          {{ FLAG_LABELS.get(f.kind, f.kind) }}
+        </span>
+        <span class="muted"> · {{ f.day.strftime('%d %b %Y') }} · raised {{ f.created_at.strftime('%d %b, %H:%M') }}</span>
+        <p class="flag-detail">{{ f.detail }}</p>
+        <p class="flag-meta muted">
+          Account: <a href="{{ url_for('admin_member', uid=f.user_id) }}">{{ f.user.name }}</a>
+          {% if f.owner and f.owner_id != f.user_id %}
+            · Device belongs to <a href="{{ url_for('admin_member', uid=f.owner_id) }}">{{ f.owner.name }}</a>
+          {% endif %}
+          {% if f.resolved and f.resolver %} · closed by {{ f.resolver.name }}{% endif %}
+        </p>
+      </div>
+      <div class="flag-actions">
+        {% if f.resolved %}
+          <span class="pill pill-success">{{ f.resolution }}</span>
+        {% else %}
+          <form method="post" action="{{ url_for('admin_resolve_flag', fid=f.id, action='uphold') }}">
+            <button class="btn btn-sm btn-danger">Uphold — keep voided</button>
+          </form>
+          <form method="post" action="{{ url_for('admin_resolve_flag', fid=f.id, action='dismiss') }}">
+            <button class="btn btn-sm btn-outline">Dismiss — restore day</button>
+          </form>
+          {% if f.device %}
+          <form method="post" action="{{ url_for('admin_toggle_device', did=f.device.id) }}">
+            <button class="link-btn">{{ 'Allow device' if f.device.is_revoked else 'Remove device' }}</button>
+          </form>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+    <p class="muted empty">
+      {% if show == 'open' %}No open flags — nothing suspicious right now.
+      {% else %}Nothing to show.{% endif %}
+    </p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2 class="card-title">All registered devices ({{ devices|length }})</h2>
+  {% if devices %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Member</th><th>Device</th><th>First used</th><th>Last used</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {% for d in devices %}
+        <tr class="{{ 'row-inactive' if d.is_revoked }}">
+          <td><a href="{{ url_for('admin_member', uid=d.user_id) }}">{{ d.user.name }}</a>
+              <span class="muted">{{ d.user.lab_id }}</span></td>
+          <td>{{ d.label or 'Unknown device' }}</td>
+          <td>{{ d.created_at.strftime('%d %b %Y') }}</td>
+          <td>{{ d.last_seen.strftime('%d %b %Y, %H:%M') if d.last_seen else '—' }}</td>
+          <td>{% if d.is_revoked %}<span class="pill">Removed</span>{% else %}<span class="pill pill-success">Active</span>{% endif %}</td>
+          <td>
+            <form method="post" action="{{ url_for('admin_toggle_device', did=d.id) }}">
+              <button class="link-btn">{{ 'Allow again' if d.is_revoked else 'Remove' }}</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="muted empty">No devices registered yet. Each member's first check-in registers theirs.</p>
+  {% endif %}
+</section>
+
+{% endblock %}

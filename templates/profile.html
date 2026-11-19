@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Profile{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>My profile</h1></div>
+
+<form method="post" enctype="multipart/form-data" class="profile-grid">
+  <section class="card profile-photo-card">
+    <h2 class="card-title">Photo</h2>
+    <div class="profile-photo">
+      <div class="avatar-lg" id="avatarPreview">
+        {% if current_user.photo %}
+          <img src="{{ url_for('static', filename='uploads/' + current_user.photo) }}" alt="">
+        {% else %}
+          <span>{{ current_user.initials }}</span>
+        {% endif %}
+      </div>
+      <label class="btn btn-outline file-btn">
+        Change photo
+        <input type="file" name="photo" accept="image/*" id="photoInput" hidden>
+      </label>
+      <p class="muted" style="font-size:.8rem">JPG, PNG, WEBP or GIF · up to 5 MB</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Details</h2>
+    <div class="field-grid">
+      <label>Lab ID
+        <input type="text" value="{{ current_user.lab_id }}" disabled>
+      </label>
+      <label>Date of joining
+        <input type="text" value="{{ current_user.joined_on.strftime('%B %Y') if current_user.joined_on else 'Not set — ask the admin' }}" disabled>
+      </label>
+      <label>Designation
+        <input type="text" value="{{ current_user.designation or '' }}" disabled>
+      </label>
+      <label>Full name
+        <input type="text" name="name" value="{{ current_user.name }}" required>
+      </label>
+      <label>Funding
+        <input type="text" value="{{ current_user.funding or '' }}" disabled>
+      </label>
+      <label>Email
+        <input type="email" name="email" value="{{ current_user.email or '' }}" placeholder="you@example.com">
+      </label>
+      <label>Phone
+        <input type="tel" name="phone" value="{{ current_user.phone or '' }}" placeholder="Optional">
+      </label>
+    </div>
+    <label>Bio
+      <textarea name="bio" rows="3" placeholder="A short bio (optional)">{{ current_user.bio or '' }}</textarea>
+    </label>
+  </section>
+
+  <section class="card span-full">
+    <h2 class="card-title">Change password</h2>
+    <div class="field-grid">
+      <label>New password
+        <input type="password" name="new_password" placeholder="Leave blank to keep current">
+      </label>
+      <label>Confirm new password
+        <input type="password" name="new_password2" placeholder="Repeat new password">
+      </label>
+    </div>
+  </section>
+
+  <div class="profile-actions">
+    <span class="muted actions-hint">Changes apply to your profile only.</span>
+    <button type="submit" class="btn btn-primary">Save changes</button>
+  </div>
+</form>
+
+{% if current_user.marks_attendance %}
+{# Its own form, so saving the profile can never mark someone as having left. #}
+<section class="card" style="margin-top:1.1rem">
+  <h2 class="card-title">Leaving the lab</h2>
+  {% if current_user.has_left() %}
+    <p>You left the lab on <b>{{ current_user.left_on.strftime('%d %b %Y') }}</b>. Attendance and new leave
+      requests are closed. If this is wrong, ask the admin to change it.</p>
+  {% elif current_user.left_on %}
+    <p>Your last day in the lab is <b>{{ current_user.left_on.strftime('%d %b %Y') }}</b>. You can still check in
+      until then. After that you drop off the lab roster and attendance closes.</p>
+    <form method="post" action="{{ url_for('profile_left_lab') }}" class="btn-row">
+      <input type="date" name="left_on" value="{{ current_user.left_on.isoformat() }}" required class="inline-input">
+      <input type="hidden" name="confirm" value="1">
+      <button class="btn btn-outline btn-sm">Change date</button>
+      <button class="btn btn-outline btn-sm" name="action" value="clear" formnovalidate>I'm not leaving</button>
+    </form>
+  {% else %}
+    <p class="muted">If you've resigned, finished, or are otherwise leaving the lab, record your last day here.
+      You can check in until then. After that you drop off the lab roster, can't mark attendance, and can
+      still log in to see your history.</p>
+    <form method="post" action="{{ url_for('profile_left_lab') }}"
+          onsubmit="return confirm('Mark yourself as leaving the lab? After your last day only the admin can undo this.')">
+      <div class="btn-row" style="align-items:center; flex-wrap:wrap; gap:.8rem">
+        <label style="margin:0">Last day in the lab
+          <input type="date" name="left_on" value="{{ today.isoformat() }}" required class="inline-input">
+        </label>
+        <label class="check-row" style="margin:0"><input type="checkbox" name="confirm" value="1" required>
+          I have resigned / am leaving the lab</label>
+        <button class="btn btn-danger btn-sm">Mark as left lab</button>
+      </div>
+    </form>
+  {% endif %}
+</section>
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+<script>
+  const inp = document.getElementById('photoInput');
+  if (inp) inp.addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const url = URL.createObjectURL(f);
+    document.getElementById('avatarPreview').innerHTML = `<img src="${url}" alt="">`;
+  });
+</script>
+{% endblock %}

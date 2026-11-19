@@ -1,0 +1,115 @@
+{% extends "dbmod/_layout.html" %}
+{% block dbmod %}
+<style>
+  .db-filters th { padding:.3rem .3rem .5rem; text-transform:none; letter-spacing:0; }
+  .db-filters input { width:100%; min-width:6rem; margin:0; padding:.3rem .45rem; font-size:.8rem; }
+  .db-filters input.on { border-color:var(--indigo); background:#eef2ff; }
+  .db-bar { display:flex; align-items:center; justify-content:space-between; gap:.6rem; flex-wrap:wrap; margin:.2rem 0 .7rem; }
+  .db-pages { display:flex; gap:.25rem; align-items:center; flex-wrap:wrap; }
+  .db-pages a, .db-pages span { min-width:2rem; text-align:center; padding:.3rem .5rem; border-radius:8px; font-size:.82rem; text-decoration:none; }
+  .db-pages a { border:1px solid var(--border); color:inherit; }
+  .db-pages a:hover { border-color:var(--indigo); color:var(--indigo); }
+  .db-pages .cur { background:var(--indigo); color:#fff; font-weight:650; }
+  .db-pages .off { color:var(--muted); opacity:.5; }
+  .db-perpage { display:flex; align-items:center; gap:.4rem; font-size:.82rem; }
+  .db-perpage select { margin:0; padding:.25rem .4rem; width:auto; }
+</style>
+
+{% macro pager(top) %}
+<div class="db-bar">
+  <span class="muted">
+    {% if total %}Rows {{ first_row }}–{{ first_row + rows|length - 1 }} of {{ total }}{% else %}0 rows{% endif %}
+  </span>
+  <div class="db-pages">
+    {% if pages > 1 %}
+      {% if page > 1 %}<a href="{{ url_for('dbmod_table', table=table, page=page-1, **view_args) }}" title="Previous page (←)">‹</a>
+      {% else %}<span class="off">‹</span>{% endif %}
+      {% for n in page_links %}
+        {% if n is none %}<span class="muted">…</span>
+        {% elif n == page %}<span class="cur">{{ n }}</span>
+        {% else %}<a href="{{ url_for('dbmod_table', table=table, page=n, **view_args) }}">{{ n }}</a>{% endif %}
+      {% endfor %}
+      {% if page < pages %}<a href="{{ url_for('dbmod_table', table=table, page=page+1, **view_args) }}" title="Next page (→)">›</a>
+      {% else %}<span class="off">›</span>{% endif %}
+    {% endif %}
+    {% if top %}
+    <label class="db-perpage">per page
+      <select name="per_page" form="dbFilter" onchange="this.form.submit()">
+        {% for n in per_page_options %}<option value="{{ n }}" {{ 'selected' if n == per_page }}>{{ n }}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+<form method="get" id="dbFilter" class="filter-row">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search every column — Lab ID, name, 18/09/2026, id…">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input type="hidden" name="dir" value="{{ 'desc' if desc else 'asc' }}">
+  <button class="btn btn-outline btn-sm">Search</button>
+  {% if q or filters %}<a href="{{ url_for('dbmod_table', table=table) }}" class="muted">clear all filters</a>{% endif %}
+  <a class="btn btn-primary btn-sm" href="{{ url_for('dbmod_new', table=table) }}">+ New row</a>
+</form>
+
+<section class="card">
+  <h2 class="card-title">{{ table }}</h2>
+  {{ pager(true) }}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+      <tr>
+        <th></th>
+        {% for c in cols %}
+          {% set next_desc = not desc if c.name == sort else false %}
+          <th><a class="db-sort" href="{{ url_for('dbmod_table', table=table, **dict(view_args, sort=c.name, dir='desc' if next_desc else 'asc')) }}">
+            {{ c.name }}{% if c.name == sort %} {{ '▼' if desc else '▲' }}{% endif %}</a></th>
+        {% endfor %}
+      </tr>
+      <tr class="db-filters">
+        <th><button class="link-btn" form="dbFilter" title="Apply filters (or press Enter)">Filter</button></th>
+        {% for c in cols %}
+          <th><input type="search" form="dbFilter" name="f_{{ c.name }}" value="{{ filters.get(c.name, '') }}"
+                     class="{{ 'on' if c.name in filters }}"
+                     placeholder="{{ 'id / Lab ID / name' if c.name in user_cols else 'filter' }}"></th>
+        {% endfor %}
+      </tr>
+      </thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td><a class="link-btn" href="{{ url_for('dbmod_edit', table=table, pk=r[pk.name]) }}">Edit</a></td>
+          {% for c in cols %}
+            {% set v = r[c.name] %}
+            <td class="db-cell" title="{{ v if v is not none }}">
+              {%- if v is none -%}<span class="db-null">NULL</span>
+              {%- elif c.name == 'password_hash' -%}<span class="db-null">•••• set</span>
+              {%- elif v is sameas true -%}✔
+              {%- elif v is sameas false -%}<span class="muted">✘</span>
+              {%- else -%}
+                {{ v|string|truncate(60, true, '…') }}
+                {%- if c.name in user_cols and lab_ids.get(v) %} <span class="muted">· {{ lab_ids[v] }}</span>{% endif %}
+              {%- endif -%}
+            </td>
+          {% endfor %}
+        </tr>
+      {% else %}
+        <tr><td colspan="{{ cols|length + 1 }}" class="muted empty">No rows{{ ' match' if q or filters }}.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if rows|length > 15 %}{{ pager(false) }}{% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // ← / → flip pages when you're not typing in a box.
+  document.addEventListener('keydown', function (e) {
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+    var t = document.querySelector('.db-pages a[title^="' + (e.key === 'ArrowLeft' ? 'Previous' : e.key === 'ArrowRight' ? 'Next' : '_') + '"]');
+    if (t) location.href = t.href;
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,59 @@
+{# Admin editor for one member's profile. Expects `m` — the user being edited. #}
+<form method="post" action="{{ url_for('admin_edit_member', uid=m.id) }}"
+      enctype="multipart/form-data" class="member-form">
+  <div class="member-form-top">
+    <span class="avatar-sm member-form-avatar">
+      {% if m.photo %}<img src="{{ url_for('static', filename='uploads/' + m.photo) }}" alt="">
+      {% else %}{{ m.initials }}{% endif %}
+    </span>
+    <label class="btn btn-outline btn-sm file-btn">
+      <span class="file-btn-text">{{ 'Replace photo' if m.photo else 'Upload photo' }}</span>
+      <input type="file" name="photo" accept="image/*" hidden>
+    </label>
+    <span class="muted" style="font-size:.78rem">JPG, PNG, WEBP or GIF · up to 5 MB</span>
+  </div>
+
+  <div class="field-grid">
+    <label>Full name
+      <input type="text" name="name" value="{{ m.name }}" required>
+    </label>
+    <label>Lab ID
+      <input type="text" name="lab_id" value="{{ m.lab_id }}" required>
+    </label>
+    <label>Designation
+      <input type="text" name="designation" value="{{ m.designation or '' }}">
+    </label>
+    <label>Funding
+      <input type="text" name="funding" value="{{ m.funding or '' }}">
+    </label>
+    {# Only drives the extra monthly menstrual-leave grant. #}
+    <label>Gender
+      <select name="gender">
+        <option value="male" {{ 'selected' if not m.gets_menstrual_leave }}>Male</option>
+        <option value="female" {{ 'selected' if m.gets_menstrual_leave }}>Female</option>
+      </select>
+    </label>
+    <label>Email
+      <input type="email" name="email" value="{{ m.email or '' }}" placeholder="name@example.com">
+    </label>
+    <label>Phone
+      <input type="tel" name="phone" value="{{ m.phone or '' }}" placeholder="Optional">
+    </label>
+    {# Leave accrues from this month; days before it aren't counted as absences. #}
+    <label>Date of joining
+      <input type="date" name="joined_on" value="{{ m.joined_on.isoformat() if m.joined_on else '' }}">
+    </label>
+    {# Blank = still in the lab. After this date they drop off the roster and can't check in. #}
+    <label>Last day in lab <span class="muted" style="font-weight:400">(left lab)</span>
+      <input type="date" name="left_on" value="{{ m.left_on.isoformat() if m.left_on else '' }}">
+    </label>
+  </div>
+  <label>Bio
+    <textarea name="bio" rows="2" placeholder="A short bio (optional)">{{ m.bio or '' }}</textarea>
+  </label>
+
+  <div class="member-form-foot">
+    <span class="muted">Changing the Lab ID changes how {{ m.name.split()[0] }} logs in. Passwords are reset separately.</span>
+    <button type="submit" class="btn btn-primary">Save changes</button>
+  </div>
+</form>

@@ -1,0 +1,15 @@
+{% set _tabs = [
+  ('admin_dashboard',  'Overview'),
+  ('admin_statistics', 'Statistics'),
+  ('admin_leaves',     'Leaves'),
+  ('admin_attendance', 'Attendance'),
+  ('admin_members',    'Members'),
+  ('admin_security',   'Security'),
+  ('admin_settings',   'Settings')
+] %}
+{% set _member_page = request.endpoint == 'admin_member' %}
+<div class="admin-tabs">
+  {% for ep, label in _tabs %}
+    <a href="{{ url_for(ep) }}" class="tab {{ 'active' if request.endpoint == ep or (_member_page and ep == 'admin_members') }}">{{ label }}{% if ep == 'admin_leaves' and pending_leaves %} <span class="badge">{{ pending_leaves }}</span>{% elif ep == 'admin_security' and open_flags %} <span class="badge badge-danger">{{ open_flags }}</span>{% endif %}</a>
+  {% endfor %}
+</div>

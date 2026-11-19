@@ -1,0 +1,95 @@
+{% extends "dbmod/_layout.html" %}
+{% block dbmod %}
+{% set pk_val = row[pk.name] %}
+<a class="back-link" href="{{ url_for('dbmod_table', table=table) }}">← {{ table }}</a>
+
+<section class="card">
+  <h2 class="card-title">{{ 'New ' ~ table ~ ' row' if creating else table ~ ' #' ~ pk_val }}</h2>
+  {% if creating %}<p class="muted">Leave a field blank to use its default (ids are assigned automatically).</p>{% endif %}
+
+  <form method="post" id="dbForm">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% for c in cols %}
+      {% set k = kind(c) %}
+      {% set stored = row[c.name] %}
+      {% if form %}
+        {% set val = form.get(c.name, '') %}
+        {% set is_null = form.get('null__' ~ c.name) %}
+      {% else %}
+        {% set val = value(c, stored) %}
+        {% set is_null = (not creating) and stored is none %}
+      {% endif %}
+      {% if creating and k == 'bool' and not form and c.default is not none and c.default.is_scalar %}
+        {% set val = '1' if c.default.arg else '0' %}
+      {% endif %}
+      <div class="db-field">
+        <label for="f_{{ c.name }}">{{ c.name }}
+          <small>{{ c.type }}{{ ' · PK' if c is sameas pk }}{{ '' if c.nullable else ' · required' }}{% for fk in c.foreign_keys %} · → {{ fk.target_fullname }}{% endfor %}</small>
+        </label>
+        <div>
+          {% if c is sameas pk and not creating %}
+            <input id="f_{{ c.name }}" value="{{ val }}" readonly>
+          {% elif table == 'users' and c.name == 'password_hash' %}
+            <input id="f_{{ c.name }}" type="password" name="password_hash" autocomplete="new-password"
+                   placeholder="{{ 'Hash is set — type to replace' if stored else 'No password — type to set one' }}">
+            <label class="db-nullbox"><input type="checkbox" name="null__password_hash" value="1">
+              Clear (member sets a new one at next login)</label>
+          {% elif k == 'bool' %}
+            <select id="f_{{ c.name }}" name="{{ c.name }}">
+              <option value="1" {{ 'selected' if val == '1' }}>true</option>
+              <option value="0" {{ 'selected' if val != '1' }}>false</option>
+            </select>
+          {% elif k == 'textarea' %}
+            <textarea id="f_{{ c.name }}" name="{{ c.name }}" data-nullable="{{ c.nullable }}">{{ val }}</textarea>
+          {% else %}
+            <input id="f_{{ c.name }}" name="{{ c.name }}" value="{{ val }}" data-nullable="{{ c.nullable }}"
+              {% if k == 'int' %}type="number" step="1"
+              {% elif k == 'float' %}type="number" step="any"
+              {% elif k == 'date' %}type="date"
+              {% elif k == 'datetime' %}type="datetime-local" step="1"
+              {% else %}type="text"{% if c.type.length %} maxlength="{{ c.type.length }}"{% endif %}{% endif %}>
+          {% endif %}
+          {% if c.nullable and k != 'bool' and not (c is sameas pk) and c.name != 'password_hash' %}
+            <label class="db-nullbox"><input type="checkbox" class="db-null-toggle" name="null__{{ c.name }}" value="1"
+              data-for="f_{{ c.name }}" {{ 'checked' if is_null }}> NULL</label>
+          {% endif %}
+          {% if not creating and c.foreign_keys and stored is not none %}
+            {% for fk in c.foreign_keys %}
+              <a class="db-nullbox" href="{{ url_for('dbmod_edit', table=fk.column.table.name, pk=stored) }}">open {{ fk.column.table.name }} #{{ stored }} →</a>
+            {% endfor %}
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+    <div class="form-actions" style="margin-top:1rem">
+      <button class="btn btn-primary">{{ 'Create row' if creating else 'Save changes' }}</button>
+    </div>
+  </form>
+</section>
+
+{% if not creating %}
+<section class="card">
+  <h2 class="card-title">Danger zone</h2>
+  <form method="post" action="{{ url_for('dbmod_delete', table=table, pk=pk_val) }}"
+        onsubmit="return confirm('Permanently delete {{ table }} #{{ pk_val }}?{% if table == 'users' %} This also deletes all of their attendance, leave requests and devices.{% endif %}')">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% if table == 'users' %}<p class="muted">Deleting a user also deletes their attendance, leave requests and devices.
+      Consider setting <code>is_active_member</code> to false instead.</p>{% endif %}
+    <button class="btn btn-danger">Delete this row</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Ticking NULL greys out the input; typing in the input unticks NULL.
+  document.querySelectorAll('.db-null-toggle').forEach(function (box) {
+    var input = document.getElementById(box.dataset.for);
+    function sync() { input.style.opacity = box.checked ? .4 : 1; }
+    box.addEventListener('change', sync);
+    input.addEventListener('input', function () { box.checked = false; sync(); });
+    sync();
+  });
+</script>
+{% endblock %}

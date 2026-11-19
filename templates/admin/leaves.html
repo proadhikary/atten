@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Admin · Leaves{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Leave requests</h1>
+  {% include "admin/_tabs.html" %}
+</div>
+
+<div class="filter-row">
+  {% for s in ['pending','approved','rejected'] %}
+    <a href="{{ url_for('admin_leaves', status=s) }}" class="chip {{ 'active' if status==s }}">{{ s|capitalize }}</a>
+  {% endfor %}
+</div>
+
+<section class="card">
+  {% if leaves %}
+  <div class="leave-list">
+    {% for l in leaves %}
+    {% set q = quotas[l.id] %}
+    <div class="leave-item">
+      <div class="leave-main">
+        <span class="leave-type"><a href="{{ url_for('admin_member', uid=l.user_id) }}">{{ l.user.name }}</a> <span class="muted">({{ l.user.lab_id }})</span> · {{ l.leave_type|capitalize }}{% if l.is_half_day %} <span class="pill pill-info">Half day</span>{% endif %}</span>
+        <span class="leave-dates">
+          {% if l.is_half_day %}{{ l.start_date.strftime('%d %b %Y') }} · 0.5 days
+          {% else %}{{ l.start_date.strftime('%d %b') }} – {{ l.end_date.strftime('%d %b %Y') }} · {{ l.days }} day(s){% endif %}
+        </span>
+        {% if q.exceeds %}
+          <span class="quota-flag">⚠ Over quota by {{ q.over_by|days }} day(s) — {{ q.before|days }} left, this request needs {{ q.days|days }}. You can still approve it.</span>
+        {% else %}
+          <span class="quota-ok muted">Quota: {{ q.before|days }} day(s) left → {{ q.after|days }} after this request</span>
+        {% endif %}
+        {% if l.reason %}<span class="leave-reason muted">Reason: {{ l.reason }}</span>{% endif %}
+        {% if l.reviewed_at %}<span class="leave-reason muted">Reviewed by {{ l.reviewer.name if l.reviewer else 'admin' }}{% if l.admin_comment %} — “{{ l.admin_comment }}”{% endif %}</span>{% endif %}
+      </div>
+      <div class="leave-side">
+        {% if l.status == 'pending' %}
+        <form method="post" action="{{ url_for('admin_review_leave', leave_id=l.id, decision='approve') }}" class="review-form">
+          <input type="text" name="comment" placeholder="Comment (optional)" class="inline-input">
+          <div class="btn-row">
+            <button class="btn btn-sm btn-primary">Approve</button>
+            <button class="btn btn-sm btn-danger" formaction="{{ url_for('admin_review_leave', leave_id=l.id, decision='reject') }}">Reject</button>
+          </div>
+        </form>
+        {% else %}
+          <span class="pill pill-{{ 'success' if l.status=='approved' else 'danger' }}">{{ l.status|capitalize }}</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+    <p class="muted empty">No {{ status }} requests.</p>
+  {% endif %}
+</section>
+
+{% endblock %}

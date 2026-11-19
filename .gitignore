@@ -1,0 +1,21 @@
+# Runtime data — database, certs, uploaded photos
+instance/
+static/uploads/*
+!static/uploads/.gitkeep
+
+# Secrets
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editors / OS / local tooling
+.DS_Store
+.idea/
+.vscode/
+.claude/settings.local.json

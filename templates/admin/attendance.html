@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Admin · Attendance{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Attendance</h1>
+  {% include "admin/_tabs.html" %}
+</div>
+
+<form method="get" class="filter-row">
+  <input type="date" name="date" value="{{ day.isoformat() }}" onchange="this.form.submit()">
+  <span class="muted">{{ day.strftime('%A, %d %B %Y') }}</span>
+</form>
+
+<section class="card">
+  <h2 class="card-title">Present / on leave ({{ records|length }})</h2>
+  {% if records %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Member</th><th>Lab ID</th><th>In</th><th>Out</th><th>Hours</th><th>Dist</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {% for r in records %}
+        <tr class="{{ 'row-voided' if r.is_voided }}">
+          <td><a href="{{ url_for('admin_member', uid=r.user_id) }}">{{ r.user.name }}</a></td>
+          <td>{{ r.user.lab_id }}</td>
+          <td>{{ r.check_in.strftime('%H:%M') if r.check_in else '—' }}</td>
+          <td>{{ r.check_out.strftime('%H:%M') if r.check_out else '—' }}</td>
+          <td>{{ r.worked_hours if r.worked_hours is not none else '—' }}</td>
+          <td>{{ (r.distance_m|int ~ ' m') if r.distance_m is not none else '—' }}</td>
+          <td>
+            {% if r.is_voided %}<span class="pill pill-danger" title="{{ r.void_reason }}">Voided</span>
+            {% elif r.status == 'on_leave' %}<span class="pill pill-info">On leave</span>
+            {% elif r.status == 'half_leave' %}<span class="pill pill-info">Half day</span>
+            {% elif r.check_in %}<span class="pill pill-success">Present</span>
+            {% else %}<span class="pill">—</span>{% endif %}
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('admin_void_attendance', aid=r.id) }}">
+              <button class="link-btn">{{ 'Restore' if r.is_voided else 'Void' }}</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="muted empty">No records for this day.</p>
+  {% endif %}
+</section>
+
+{% if absentees %}
+<section class="card">
+  <h2 class="card-title">Not marked ({{ absentees|length }})</h2>
+  <div class="chip-list">
+    {% for u in absentees %}
+      <span class="chip chip-static">{{ u.name }}</span>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% endblock %}

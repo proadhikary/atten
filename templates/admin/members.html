@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Admin · Members{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Members</h1>
+  {% include "admin/_tabs.html" %}
+</div>
+
+<details class="card add-member">
+  <summary>+ Add a member</summary>
+  <form method="post" class="field-grid" style="margin-top:1rem">
+    <label>Lab ID<input type="text" name="lab_id" required></label>
+    <label>Name<input type="text" name="name" required></label>
+    <label>Designation<input type="text" name="designation"></label>
+    <label>Funding<input type="text" name="funding"></label>
+    <label>Date of joining<input type="date" name="joined_on"></label>
+    <label>Gender<select name="gender">
+      <option value="male">Male</option>
+      <option value="female">Female</option>
+    </select></label>
+    <div class="form-actions" style="grid-column:1/-1"><button class="btn btn-primary">Add member</button></div>
+  </form>
+</details>
+
+<section class="card">
+  <div class="filter-row">
+    <input type="search" id="memberSearch" placeholder="Search by name or Lab ID…" autocomplete="off"
+           value="{{ request.args.get('q', '') }}" style="max-width:320px">
+    <span class="muted" id="memberCount">{{ members|length }} members</span>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Name</th><th>Lab ID</th><th>Designation</th><th>Funding</th><th>Joined</th><th>Role</th><th>Actions</th></tr></thead>
+      <tbody>
+      {% for m in members %}
+        <tr class="{{ 'row-inactive' if not m.is_active_member or m.has_left() }}" data-member="{{ m.id }}"
+            data-search="{{ (m.name ~ ' ' ~ m.lab_id)|lower }}">
+          <td>
+            <a class="member-cell" href="{{ url_for('admin_member', uid=m.id) }}">
+              <span class="avatar-sm">
+                {% if m.photo %}<img src="{{ url_for('static', filename='uploads/' + m.photo) }}" alt="">
+                {% else %}{{ m.initials }}{% endif %}
+              </span>
+              {{ m.name }}
+            </a>
+          </td>
+          <td>{{ m.lab_id }}</td>
+          <td>{{ m.designation or '—' }}</td>
+          <td>{{ m.funding or '—' }}</td>
+          <td>{{ m.joined_on.strftime('%b %Y') if m.joined_on else '—' }}</td>
+          <td>
+            {% if m.is_admin %}<span class="pill pill-info">Admin</span>{% else %}<span class="pill">Member</span>{% endif %}
+            {% if not m.is_active_member %}<span class="pill pill-danger">Inactive</span>{% endif %}
+            {% if m.has_left() %}<span class="pill pill-warn" title="Last day {{ m.left_on.strftime('%d %b %Y') }}">Left lab</span>
+            {% elif m.left_on %}<span class="pill pill-warn">Leaving {{ m.left_on.strftime('%d %b') }}</span>{% endif %}
+            {% if not m.has_password %}<span class="pill pill-warn">No login</span>{% endif %}
+            {% if not m.marks_attendance %}<span class="pill">Admin-only</span>{% endif %}
+            {% if m.id in flagged %}<span class="pill pill-danger">Flagged</span>{% endif %}
+          </td>
+          <td class="action-cell">
+            <button type="button" class="link-btn" data-edit="{{ m.id }}">Edit</button>
+            <a class="link-btn" href="{{ url_for('admin_member', uid=m.id) }}">View stats</a>
+            <form method="post" action="{{ url_for('admin_toggle_admin', uid=m.id) }}"><button class="link-btn">{{ 'Revoke admin' if m.is_admin else 'Make admin' }}</button></form>
+            <form method="post" action="{{ url_for('admin_toggle_attendance', uid=m.id) }}"><button class="link-btn">{{ 'Enable attendance' if not m.marks_attendance else 'Admin-only' }}</button></form>
+            <form method="post" action="{{ url_for('admin_toggle_active', uid=m.id) }}"><button class="link-btn">{{ 'Activate' if not m.is_active_member else 'Deactivate' }}</button></form>
+            <form method="post" action="{{ url_for('admin_reset_password', uid=m.id) }}" onsubmit="return confirm('Reset password for {{ m.name }}?')"><button class="link-btn">Reset pwd</button></form>
+          </td>
+        </tr>
+        <tr class="member-edit-row" id="edit-{{ m.id }}" hidden>
+          <td colspan="7">{% include "admin/_member_form.html" %}</td>
+        </tr>
+      {% endfor %}
+        <tr id="memberNone" hidden><td colspan="7" class="muted empty">No member matches that search.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* Expand a row into its editor in place, so the admin never leaves the list. */
+document.querySelectorAll('[data-edit]').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var row = document.getElementById('edit-' + btn.dataset.edit);
+    row.hidden = !row.hidden;
+    btn.textContent = row.hidden ? 'Edit' : 'Close';
+    if (!row.hidden) row.querySelector('input[name="name"]').focus();
+  });
+});
+
+/* Filter the roster as you type — name or Lab ID, any part, any case.
+   An open editor row follows its member in and out of view. */
+(function () {
+  var box = document.getElementById('memberSearch');
+  var rows = document.querySelectorAll('tr[data-member]');
+  var count = document.getElementById('memberCount');
+  function apply() {
+    var terms = box.value.toLowerCase().split(/\s+/).filter(Boolean);
+    var shown = 0;
+    rows.forEach(function (row) {
+      var hit = terms.every(function (t) { return row.dataset.search.indexOf(t) !== -1; });
+      row.hidden = !hit;
+      var ed = document.getElementById('edit-' + row.dataset.member);
+      if (!hit) ed.hidden = true;
+      if (!hit) { var b = row.querySelector('[data-edit]'); if (b) b.textContent = 'Edit'; }
+      if (hit) shown++;
+    });
+    count.textContent = terms.length ? shown + ' of ' + rows.length + ' members' : rows.length + ' members';
+    document.getElementById('memberNone').hidden = shown > 0;
+  }
+  box.addEventListener('input', apply);
+  box.addEventListener('keydown', function (e) { if (e.key === 'Escape') { box.value = ''; apply(); } });
+  apply();
+})();
+
+/* Confirm a photo choice — the real input is hidden inside the button. */
+document.addEventListener('change', function (e) {
+  if (e.target.type !== 'file' || !e.target.files.length) return;
+  var text = e.target.closest('label').querySelector('.file-btn-text');
+  if (text) text.textContent = e.target.files[0].name;
+});
+</script>
+{% endblock %}

@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Admin · Statistics{% endblock %}
+
+{% macro datatable(rows, c1, c2) %}
+<details class="data-table">
+  <summary>Show data table</summary>
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>{{ c1 }}</th><th>{{ c2 }}</th></tr></thead>
+      <tbody>
+        {% for r in rows %}<tr><td>{{ r.label }}</td><td>{{ r.value }}</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endmacro %}
+
+{% block content %}
+
+<div class="page-head">
+  <h1>Statistics</h1>
+  {% include "admin/_tabs.html" %}
+</div>
+
+<div class="filter-row">
+  {% for d, lbl in [(30,'Last 30 days'),(90,'Last 90 days'),(180,'Last 6 months'),(365,'Last year')] %}
+    <a href="{{ url_for('admin_statistics', days=d) }}" class="chip {{ 'active' if days==d }}">{{ lbl }}</a>
+  {% endfor %}
+  <span class="muted" style="font-size:.82rem">{{ start.strftime('%d %b %Y') }} – {{ today.strftime('%d %b %Y') }}</span>
+</div>
+
+{% if not has_data %}
+  <section class="card">
+    <p class="chart-empty">No attendance has been recorded in this period yet.<br>
+    Charts will appear here once members start checking in.</p>
+  </section>
+{% else %}
+
+<!-- Headline numbers -->
+<div class="stat-cards">
+  <div class="stat-card"><span class="stat-num">{{ total_checkins }}</span><span class="stat-label">Total check-ins</span></div>
+  <div class="stat-card accent-blue"><span class="stat-num">{{ avg_daily }}</span><span class="stat-label">Avg people / day</span></div>
+  <div class="stat-card accent-green"><span class="stat-num">{{ peak }}</span><span class="stat-label">Peak day ({{ peak_day }})</span></div>
+  <div class="stat-card accent-amber"><span class="stat-num">{{ avg_hours }}</span><span class="stat-label">Avg hours logged</span></div>
+</div>
+
+<!-- Daily trend -->
+<section class="card chart-card">
+  <div class="chart-head"><h2 class="card-title" style="margin:0">Daily attendance</h2></div>
+  <p class="chart-sub">People checked in each day over the last {{ days }} days</p>
+  <div class="chart" data-chart="vbar" data-unit="present" data-height="210"
+       data-max-labels="{{ 8 if days <= 90 else 6 }}"
+       data-values='{{ daily|tojson }}'></div>
+  {{ datatable(daily, 'Date', 'People present') }}
+</section>
+
+<div class="grid grid-2">
+  <!-- Day of week -->
+  <section class="card chart-card">
+    <div class="chart-head"><h2 class="card-title" style="margin:0">Attendance by weekday</h2></div>
+    <p class="chart-sub">Average people present per weekday</p>
+    <div class="chart" data-chart="vbar" data-unit="avg. present" data-height="180" data-max-labels="7"
+         data-values='{{ dow|tojson }}'></div>
+    {{ datatable(dow, 'Weekday', 'Avg present') }}
+  </section>
+
+  <!-- Check-in times -->
+  <section class="card chart-card">
+    <div class="chart-head"><h2 class="card-title" style="margin:0">Check-in times</h2></div>
+    <p class="chart-sub">When people arrive, by hour of day</p>
+    {% if hour_dist %}
+    <div class="chart" data-chart="vbar" data-unit="check-ins" data-height="180" data-max-labels="9"
+         data-values='{{ hour_dist|tojson }}'></div>
+    {{ datatable(hour_dist, 'Hour', 'Check-ins') }}
+    {% else %}<p class="chart-empty">No check-in times recorded.</p>{% endif %}
+  </section>
+
+  <!-- By designation -->
+  <section class="card chart-card">
+    <div class="chart-head"><h2 class="card-title" style="margin:0">Attendance by role</h2></div>
+    <p class="chart-sub">Average days present per member, by designation</p>
+    {% if by_designation %}
+    <div class="chart" data-chart="hbar" data-unit="days per member"
+         data-values='{{ by_designation|tojson }}'></div>
+    {{ datatable(by_designation, 'Designation', 'Avg days present') }}
+    {% else %}<p class="chart-empty">No role data.</p>{% endif %}
+  </section>
+
+  <!-- Leave requests -->
+  <section class="card chart-card">
+    <div class="chart-head"><h2 class="card-title" style="margin:0">Leave requests</h2></div>
+    <p class="chart-sub">Requests raised in this period, by outcome</p>
+    {% set lv_total = leave_status.approved + leave_status.pending + leave_status.rejected %}
+    {% if lv_total %}
+      <div class="seg-bar">
+        {% for key, cls in [('approved','seg-approved'),('pending','seg-pending'),('rejected','seg-rejected')] %}
+          {% if leave_status[key] %}
+          <div class="seg {{ cls }}" style="flex:{{ leave_status[key] }}"
+               title="{{ leave_status[key] }} {{ key }}">{{ leave_status[key] }}</div>
+          {% endif %}
+        {% endfor %}
+      </div>
+      <div class="seg-legend">
+        <span><i class="seg-dot" style="background:var(--green)"></i>Approved · <b>{{ leave_status.approved }}</b></span>
+        <span><i class="seg-dot" style="background:var(--amber)"></i>Pending · <b>{{ leave_status.pending }}</b></span>
+        <span><i class="seg-dot" style="background:var(--red)"></i>Rejected · <b>{{ leave_status.rejected }}</b></span>
+      </div>
+      {% if by_type %}
+      <p class="chart-sub" style="margin-top:1.2rem">By leave type</p>
+      <div class="chart" data-chart="hbar" data-unit="requests" data-values='{{ by_type|tojson }}'></div>
+      {{ datatable(by_type, 'Leave type', 'Requests') }}
+      {% endif %}
+    {% else %}
+      <p class="chart-empty">No leave requests in this period.</p>
+    {% endif %}
+  </section>
+</div>
+
+<!-- Top members -->
+<section class="card">
+  <h2 class="card-title">Most present members</h2>
+  {% if top_members %}
+  <ol class="rank-list">
+    {% set top_val = top_members[0].value %}
+    {% for m in top_members %}
+    <li>
+      <span class="rank-num">{{ loop.index }}</span>
+      <span>
+        <span class="rank-name">{{ m.label }} <span class="muted">· {{ m.sub }}</span></span>
+        <span class="rank-bar-wrap"><span class="rank-bar" style="width:{{ (m.value / top_val * 100)|round(1) }}%"></span></span>
+      </span>
+      <span class="rank-val">{{ m.value }} d</span>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}<p class="chart-empty">No data yet.</p>{% endif %}
+</section>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+{% endblock %}

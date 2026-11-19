@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %}Admin · {{ member.name }}{% endblock %}
+
+{% macro datatable(rows, c1, c2) %}
+<details class="data-table">
+  <summary>Show data table</summary>
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>{{ c1 }}</th><th>{{ c2 }}</th></tr></thead>
+      <tbody>
+        {% for r in rows %}<tr><td>{{ r.label }}</td><td>{{ r.value }}</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endmacro %}
+
+{% block content %}
+
+<div class="page-head">
+  <h1>Member</h1>
+  {% include "admin/_tabs.html" %}
+</div>
+
+<a href="{{ url_for('admin_members') }}" class="back-link">← All members</a>
+
+<section class="card person-head">
+  <span class="avatar-lg person-avatar">
+    {% if member.photo %}<img src="{{ url_for('static', filename='uploads/' + member.photo) }}" alt="">
+    {% else %}<span>{{ member.initials }}</span>{% endif %}
+  </span>
+  <div class="person-id">
+    <h2>{{ member.name }}</h2>
+    <p class="muted">{{ member.lab_id }} · {{ member.designation or 'No designation' }}{% if member.funding %} · {{ member.funding }}{% endif %}
+      · {{ 'Joined ' ~ member.joined_on.strftime('%b %Y') if member.joined_on else 'Joining date not set' }}</p>
+    <p class="person-pills">
+      {% if member.is_admin %}<span class="pill pill-info">Admin</span>{% else %}<span class="pill">Member</span>{% endif %}
+      {% if not member.is_active_member %}<span class="pill pill-danger">Inactive</span>{% endif %}
+      {% if member.has_left() %}<span class="pill pill-warn">Left lab {{ member.left_on.strftime('%d %b %Y') }}</span>
+      {% elif member.left_on %}<span class="pill pill-warn">Leaving {{ member.left_on.strftime('%d %b %Y') }}</span>{% endif %}
+      {% if not member.has_password %}<span class="pill pill-warn">No login yet</span>{% endif %}
+      {% if not member.marks_attendance %}<span class="pill">Admin-only</span>{% endif %}
+    </p>
+    {% if member.email or member.phone %}
+      <p class="muted person-contact">{{ member.email or '' }}{% if member.email and member.phone %} · {% endif %}{{ member.phone or '' }}</p>
+    {% endif %}
+  </div>
+</section>
+
+<details class="card edit-card">
+  <summary>Edit profile</summary>
+  {% with m = member %}{% include "admin/_member_form.html" %}{% endwith %}
+</details>
+
+{% set open_flags_here = flags | selectattr('resolved', 'equalto', false) | list %}
+{% if open_flags_here %}
+<div class="flash flash-danger">
+  <b>{{ open_flags_here|length }} open security flag(s)</b> for this member —
+  <a href="{{ url_for('admin_security') }}">review in Security</a>.
+</div>
+{% endif %}
+
+<!-- Leave quota -->
+<section class="card">
+  <h2 class="card-title">Leave quota</h2>
+  <p class="chart-sub">{{ quota.rate|days }} day(s) per month, carried forward ·
+     cycle {{ quota.cycle_start.strftime('%d %b %Y') }} – {{ quota.cycle_end.strftime('%d %b %Y') }}
+     {%- if quota.accrues_from > quota.cycle_start %} · accruing from joining, {{ quota.accrues_from.strftime('%b %Y') }}{% endif %}</p>
+  <div class="quota-bar" role="img"
+       aria-label="{{ quota.used|days }} of {{ quota.earned|days }} earned days used">
+    {% set span = [quota.earned, quota.used] | max or 1 %}
+    <span class="quota-fill {{ 'over' if quota.balance < 0 }}"
+          style="width:{{ (quota.used / span * 100)|round(1) }}%"></span>
+  </div>
+  <div class="stat-cards quota-cards">
+    <div class="stat-card"><span class="stat-num">{{ quota.earned|days }}</span><span class="stat-label">Earned so far ({{ quota.months }} mo)</span></div>
+    <div class="stat-card accent-blue"><span class="stat-num">{{ quota.used|days }}</span><span class="stat-label">Approved &amp; taken</span></div>
+    <div class="stat-card {{ 'accent-red' if quota.balance < 0 else 'accent-green' }}"><span class="stat-num">{{ quota.balance|days }}</span><span class="stat-label">Remaining</span></div>
+    <div class="stat-card accent-amber"><span class="stat-num">{{ quota.pending|days }}</span><span class="stat-label">Pending approval</span></div>
+  </div>
+  {% if quota.balance < 0 %}
+    <p class="quota-warn">⚠ Over quota by {{ (-quota.balance)|days }} day(s) this cycle.</p>
+  {% endif %}
+  {% if quota.has_menstrual %}
+    <p class="muted" style="font-size:.82rem">
+      Includes a menstrual grant of {{ quota.menstrual.rate|days }} day(s) per month,
+      spendable only on menstrual leave and lapsing at the end of each month:
+      <b>{{ quota.menstrual.balance|days }} of {{ quota.menstrual.earned|days }}</b> left for
+      {{ quota.menstrual.month.strftime('%B') }} ({{ quota.menstrual.used_cycle|days }} used this cycle).
+      General balance is <b>{{ quota.general.balance|days }} of {{ quota.general.earned|days }}</b> earned.
+    </p>
+  {% endif %}
+  <p class="muted" style="font-size:.82rem">Full cycle allowance: {{ quota.annual|days }} days.</p>
+</section>
+
+<div class="filter-row">
+  {% for d, lbl in [(30,'Last 30 days'),(90,'Last 90 days'),(180,'Last 6 months'),(365,'Last year')] %}
+    <a href="{{ url_for('admin_member', uid=member.id, days=d) }}" class="chip {{ 'active' if days==d }}">{{ lbl }}</a>
+  {% endfor %}
+  <span class="muted" style="font-size:.82rem">{{ stats.start.strftime('%d %b %Y') }} – {{ today.strftime('%d %b %Y') }}</span>
+</div>
+
+<!-- Headline numbers -->
+<div class="stat-cards">
+  <div class="stat-card"><span class="stat-num">{{ stats.present_days }}</span><span class="stat-label">Days present{% if stats.weekend_present %} (incl. {{ stats.weekend_present }} weekend){% endif %}</span></div>
+  <div class="stat-card accent-blue"><span class="stat-num">{{ stats.rate }}%</span><span class="stat-label">Weekday attendance (Mon–Fri)</span></div>
+  <div class="stat-card accent-green"><span class="stat-num">{{ stats.avg_in }}</span><span class="stat-label">Avg check-in (Mon–Fri)</span></div>
+  <div class="stat-card accent-amber"><span class="stat-num">{{ stats.avg_hours }}</span><span class="stat-label">Avg hours / weekday</span></div>
+</div>
+
+{% if not stats.has_data %}
+  <section class="card">
+    <p class="chart-empty">{{ member.name.split()[0] }} has not checked in during this period.</p>
+  </section>
+{% else %}
+
+<section class="card chart-card">
+  <div class="chart-head"><h2 class="card-title" style="margin:0">Hours logged per day</h2></div>
+  <p class="chart-sub">Empty bars are days with no check-in, leave, or no check-out recorded</p>
+  <div class="chart" data-chart="vbar" data-unit="hours" data-height="200"
+       data-max-labels="{{ 8 if days <= 90 else 6 }}"
+       data-values='{{ stats.daily|tojson }}'></div>
+  {{ datatable(stats.daily, 'Date', 'Hours') }}
+</section>
+
+<div class="grid grid-2">
+  <section class="card chart-card">
+    <div class="chart-head"><h2 class="card-title" style="margin:0">Which days they come in</h2></div>
+    <p class="chart-sub">Share of each weekday present in this period · Sat &amp; Sun are optional</p>
+    <div class="chart" data-chart="vbar" data-unit="% present" data-height="180" data-max-labels="7"
+         data-values='{{ stats.dow|tojson }}'></div>
+    {{ datatable(stats.dow, 'Weekday', '% present') }}
+  </section>
+
+  <section class="card chart-card">
+    <div class="chart-head"><h2 class="card-title" style="margin:0">Check-in times</h2></div>
+    <p class="chart-sub">When they arrive, by hour of day</p>
+    {% if stats.hour_dist %}
+    <div class="chart" data-chart="vbar" data-unit="check-ins" data-height="180" data-max-labels="9"
+         data-values='{{ stats.hour_dist|tojson }}'></div>
+    {{ datatable(stats.hour_dist, 'Hour', 'Check-ins') }}
+    {% else %}<p class="chart-empty">No check-in times recorded.</p>{% endif %}
+  </section>
+</div>
+
+<section class="card">
+  <h2 class="card-title">Day breakdown</h2>
+  <ul class="kv">
+    <li><span>Days present</span><b>{{ stats.present_days }}</b></li>
+    <li><span>Days on approved leave</span><b>{{ stats.leave_days|days }}</b></li>
+    <li><span>Weekdays absent (no leave)</span><b>{{ stats.weekday_absent }} of {{ stats.weekdays }}</b></li>
+    <li><span>Weekend days in <span class="muted">(optional, not in averages)</span></span><b>{{ stats.weekend_present }}{% if stats.weekend_hours %} · {{ stats.weekend_hours }} h{% endif %}</b></li>
+    <li><span>Total hours logged</span><b>{{ stats.total_hours }} h</b></li>
+  </ul>
+</section>
+
+{% endif %}
+
+<div class="grid grid-2">
+  <!-- Recent attendance -->
+  <section class="card">
+    <h2 class="card-title">Recent attendance</h2>
+    {% if recent %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Date</th><th>In</th><th>Out</th><th>Hours</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        {% for r in recent %}
+          <tr class="{{ 'row-voided' if r.is_voided }}">
+            <td>{{ r.day.strftime('%a, %d %b') }}</td>
+            <td>{{ r.check_in.strftime('%H:%M') if r.check_in else '—' }}</td>
+            <td>{{ r.check_out.strftime('%H:%M') if r.check_out else '—' }}</td>
+            <td>{{ r.worked_hours if r.worked_hours is not none else '—' }}</td>
+            <td>
+              {% if r.is_voided %}<span class="pill pill-danger" title="{{ r.void_reason }}">Voided</span>
+              {% elif r.status == 'on_leave' %}<span class="pill pill-info">On leave</span>
+              {% elif r.status == 'half_leave' %}<span class="pill pill-info">Half day</span>
+              {% elif r.check_in %}<span class="pill pill-success">Present</span>
+              {% else %}<span class="pill">—</span>{% endif %}
+            </td>
+            <td>
+              <form method="post" action="{{ url_for('admin_void_attendance', aid=r.id) }}">
+                <button class="link-btn">{{ 'Restore' if r.is_voided else 'Void' }}</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<p class="muted empty">No attendance records.</p>{% endif %}
+  </section>
+
+  <!-- Leave history -->
+  <section class="card">
+    <h2 class="card-title">Leave history</h2>
+    {% if member_leaves %}
+    <div class="leave-list">
+      {% for l in member_leaves[:8] %}
+      <div class="leave-item">
+        <div class="leave-main">
+          <span class="leave-type">{{ l.leave_type|capitalize }}{% if l.is_half_day %} <span class="pill pill-info">Half day</span>{% endif %}</span>
+          <span class="leave-dates">
+            {% if l.is_half_day %}{{ l.start_date.strftime('%d %b %Y') }} · 0.5d
+            {% else %}{{ l.start_date.strftime('%d %b') }} – {{ l.end_date.strftime('%d %b %Y') }} · {{ l.days }}d{% endif %}
+          </span>
+          {% if l.reason %}<span class="leave-reason muted">{{ l.reason }}</span>{% endif %}
+        </div>
+        <div class="leave-side">
+          <span class="pill pill-{{ 'success' if l.status=='approved' else 'danger' if l.status=='rejected' else 'warn' }}">{{ l.status|capitalize }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% if member_leaves|length > 8 %}
+      <p class="muted" style="font-size:.82rem">Showing 8 of {{ member_leaves|length }} requests.</p>
+    {% endif %}
+    {% else %}<p class="muted empty">No leave requests.</p>{% endif %}
+  </section>
+</div>
+
+<!-- Devices -->
+<section class="card">
+  <h2 class="card-title">Registered devices</h2>
+  <p class="chart-sub">Attendance can only be marked from up to {{ device_limit }} devices per account.</p>
+  {% if devices %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Device</th><th>First used</th><th>Last used</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {% for d in devices %}
+        <tr class="{{ 'row-inactive' if d.is_revoked }}">
+          <td>{{ d.label or 'Unknown device' }}</td>
+          <td>{{ d.created_at.strftime('%d %b %Y') }}</td>
+          <td>{{ d.last_seen.strftime('%d %b %Y, %H:%M') if d.last_seen else '—' }}</td>
+          <td>{% if d.is_revoked %}<span class="pill">Removed</span>{% else %}<span class="pill pill-success">Active</span>{% endif %}</td>
+          <td>
+            <form method="post" action="{{ url_for('admin_toggle_device', did=d.id) }}">
+              <button class="link-btn">{{ 'Allow again' if d.is_revoked else 'Remove' }}</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="muted empty">No devices registered yet — the first check-in registers one.</p>{% endif %}
+</section>
+
+{% if flags %}
+<section class="card">
+  <h2 class="card-title">Security flags</h2>
+  <div class="flag-list">
+    {% for f in flags %}
+    <div class="flag-item {{ 'resolved' if f.resolved }}">
+      <div>
+        <span class="flag-kind">{{ FLAG_LABELS.get(f.kind, f.kind) }}</span>
+        <span class="muted"> · {{ f.day.strftime('%d %b %Y') }}</span>
+        <p class="flag-detail">{{ f.detail }}</p>
+      </div>
+      <span class="pill pill-{{ 'success' if f.resolved else 'danger' }}">{{ f.resolution or 'Open' }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script>
+document.addEventListener('change', function (e) {
+  if (e.target.type !== 'file' || !e.target.files.length) return;
+  var text = e.target.closest('label').querySelector('.file-btn-text');
+  if (text) text.textContent = e.target.files[0].name;
+});
+</script>
+{% endblock %}
